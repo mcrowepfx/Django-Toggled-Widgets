@@ -15,6 +15,9 @@ _____
 
 4. Define the ModelForm's ``toggle_pairs`` class attribute as an iterable of two-tuples that describe the toggle relationship.
 
+ModelForm Configuration
+_______________________
+
 In the simplest implementation, both elements in the tuple are names of fields whose widgets inherit from ``toggled_widgets.ToggledWidget``. The admin form will provide a control to toggle between these two fields. For example:
 
     class SomeModelForm(ToggledWidgetFormMixin, ModelForm):
@@ -28,3 +31,8 @@ Either or both elements in the tuple may also be an iterable containing multiple
         toggle_pairs = [
             ('some_field', ('some_other_field', 'some_third_field'))
         ]
+        
+Event Hooks
+___________
+
+Client-side scripts may subscribe to the ``pairingReady`` event on ``document`` to take action when the pairing between two inputs has been set up. In addition to the event itself, listeners will be passed the ``<input>`` element that registered the readiness of the pairing. Note that this event is only triggered once per pairing.

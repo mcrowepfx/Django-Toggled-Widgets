@@ -24,6 +24,12 @@ class ToggledWidget(Widget):
         # Cohorts are other Widget instances (of any type) that are meant to
         # be toggled along with this one.
         self.cohorts = None
+        # It's semi-arbitrary what this ID is. Assigning it this way means
+        # that new instances of fields using this widget in any additional
+        # forms created on the client side in an inline formset context will
+        # all share the same ID, but that's OK because the binding of fields
+        # to each other only takes place within the context of the form, not
+        # across multiple forms in the formset.
         self.pairing_id = id(self)
         self.visible = True
         
@@ -97,8 +103,9 @@ class ToggledWidgetModelFormMetaclass(ModelFormMetaclass):
     def __new__(cls, name, bases, attrs):
         for pair in attrs.get('toggle_pairs', ()):
             master_field = ToggledWidgetFormMixin.split_pairing_member(pair[0])[0]
-            attrs[ToggledWidgetFormMixin.build_metafield_name(master_field)] = CharField(
-                widget=HiddenInput
+            metafield_name = ToggledWidgetFormMixin.build_metafield_name(master_field)
+            attrs[metafield_name] = CharField(
+                widget=HiddenInput(attrs={'data-base-name': metafield_name})
             )
         return super(ToggledWidgetModelFormMetaclass, cls).__new__(cls, name, bases, attrs)
         
