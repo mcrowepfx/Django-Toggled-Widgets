@@ -9,7 +9,7 @@ _____
 
 1. Add "toggled_widgets" to your ``INSTALLED_APPS`` setting.
 
-2. Create custom widget classes that inherit from ``toggled_widgets.ToggledWidget``.
+2. Create custom widget classes that inherit from ``toggled_widgets.ToggledWidget``. Set the ``toggle_button_text`` attribute on these classes to control the text displayed on the buttons that will control the toggling.
 
 3. Add ``toggled_widgets.ToggledWidgetFormMixin`` to the MRO of any ModelForm instances containing fields that use toggled widgets.
 
@@ -31,6 +31,11 @@ Either or both elements in the tuple may also be an iterable containing multiple
         toggle_pairs = [
             ('some_field', ('some_other_field', 'some_third_field'))
         ]
+        
+ModelAdmin Configuration
+________________________
+
+The only situation in which any special ModelAdmin configuration required is when the instance overrides ``get_fieldsets()`` and/or ``get_fields()``. ``ToggledWidgetFormMixin.clean()`` makes a decision about which value from a toggled field pair to respect by looking at the value of a hidden metafield whose value contains the name of the field that was visible upon submission. If the aforementioned methods are overridden, their return values need to include the name of this metafield. The metafield's name will always be based on the first field in a toggle pairing; obtain it by passing that field name to the ``ToggledWidgetFormMixin.build_metafield_name()`` static method.
         
 Event Hooks
 ___________

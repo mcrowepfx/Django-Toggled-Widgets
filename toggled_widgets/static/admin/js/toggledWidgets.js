@@ -20,7 +20,10 @@
             );
         }
         field.isVisible = function() {
-            return Boolean(this.getAttribute('data-visible'));
+            if (this._visible === undefined) {
+                this._visible = this.context.row.getAttribute('class').indexOf('hidden') == -1;
+            }
+            return this._visible;
         }.bind(field);
         field.setVisible = function(visible) {
             if (visible === undefined) {
@@ -29,7 +32,7 @@
                 visible = this.isVisible();
             }
             else {
-                this.setAttribute('data-visible', visible ? '1' : '');
+                this._visible = visible;
             }
             var jqMethod = visible ? 'removeClass' : 'addClass';
             django.jQuery(this.context.row)[jqMethod]('hidden');
@@ -37,12 +40,19 @@
                 django.jQuery(this.cohorts[i].context.row)[jqMethod]('hidden');
             }
         }.bind(field);
-        field.setVisible();
         /* Find the metafield. This works a bit differently in the context of an
         inline form versus a regular form. */
         var fieldsetContainerID = fieldset.parent().attr('id');
         var metafieldName = field.getAttribute('data-metafield-name');
         field.cleanName = field.getAttribute('name');
+        /* If the parent of the fieldset has an id attribute, and it ends with
+        a hyphen followed by a number, we're in an inline context. We'll need
+        to chop the contents of that id off the field's name attribute to get
+        the clean name, which is what the metafield expects to get as a value.
+        */
+        if (fieldsetContainerID && /-\d+$/.test(fieldsetContainerID)) {
+            field.cleanName = field.cleanName.substr(fieldsetContainerID.length + 1);
+        }
         field.metafield = fieldset.find('input[data-base-name="' + metafieldName + '"]').get(0);
         // Define the toggle behavior
         field.toggle = function(recurse) {
@@ -86,13 +96,13 @@
     django.jQuery(function() {
         /* Don't prepare the fields in the invisible extra form that's there
         only to be cloned. */
-        django.jQuery('input[data-toggle-id]:not([name*="__prefix__"])').each(function() {
+        django.jQuery('[data-toggle-id]:not([name*="__prefix__"])').each(function() {
             prepareToggle(this);
         });
         /* Instead, listen for dynamic additions and prepare those fields when
         they are added. */
         django.jQuery(document).on('formset:added', function(event, $row, formsetName) {
-            $row.find('input[data-toggle-id]').each(function() {
+            $row.find('[data-toggle-id]').each(function() {
                 prepareToggle(this);
             });
         });

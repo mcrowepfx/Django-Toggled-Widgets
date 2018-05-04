@@ -31,7 +31,6 @@ class ToggledWidget(Widget):
         # to each other only takes place within the context of the form, not
         # across multiple forms in the formset.
         self.pairing_id = id(self)
-        self.visible = True
         
     def __deepcopy__(self, memo):
         """
@@ -46,8 +45,16 @@ class ToggledWidget(Widget):
         if not isinstance(paired, ToggledWidget):
             raise TypeError('The paired widget must inherit from ToggledWidget.')
         self.paired_widget = paired
+        self.paired_widget.paired_widget = self
         self.paired_widget.set_metafield_name(self.attrs['data-metafield-name'])
-        paired.paired_widget = self
+        
+    def break_pairing(self, recurse=True):
+        if not self.paired_widget:
+            raise SetupIncompleteError('This widget has not been paired.')
+        if recurse:
+            self.paired_widget.break_pairing(False)
+        self.paired_widget = None
+        del self.attrs['data-metafield-name']
         
     def set_cohorts(self, cohorts):
         self.cohorts = cohorts
@@ -55,7 +62,8 @@ class ToggledWidget(Widget):
             
     def sync_cohorts(self):
         if self.cohorts:
-            for cohort in self.cohorts:
+            for cohort_wrapper in self.cohorts:
+                cohort = cohort_wrapper.widget
                 # This drove me nuts for hours: widgets for choice fields in
                 # the admin are wrapped in a containing widget, which meant
                 # that for such fields, this code was setting this extra
@@ -72,27 +80,88 @@ class ToggledWidget(Widget):
         """
         self.attrs['data-metafield-name'] = metafield_name
         
-    def toggle_visibility(self):
-        if not self.paired_widget:
-            raise SetupIncompleteError('Cannot toggle visibility on an unpaired widget.')
-        original = self.visible
-        self.visible = not original
-        self.paired_widget.visible = not self.visible
-        
-    def set_visible(self):
-        if not self.visible:
-            self.toggle_visibility()
-        
     def build_attrs(self, *args, **kwargs):
         attrs = super(ToggledWidget, self).build_attrs(*args, **kwargs)
         if self.paired_widget:
             attrs.update({
                 'data-toggle-id': self.pairing_id,
                 'data-toggle-pairing': self.paired_widget.pairing_id,
-                'data-toggle-button-text': self.toggle_button_text,
-                'data-visible': '1' if self.visible else ''
+                'data-toggle-button-text': self.toggle_button_text
             })
         return attrs
+        
+class ToggledWidgetWrapper(object):
+    """
+    Wrapper class for widgets involved in a toggling relationship. This exists
+    in order to exert control over whether the Django admin shows or hides the
+    row containing this widget. It would be possible to simply define the
+    appropriate method to achieve this on the toggled widget instances
+    themselves, but since widgets of any type may be set up to toggle
+    sympathetically, the choices are either to wrap them like this or monkey-
+    patch, and I choose the former.
+    """
+    _UNDELEGATED_ATTRIBUTES = (
+        'widget',
+        'is_hidden',
+        '_is_hidden',
+        'set_paired_widget',
+        'set_visible',
+        'sync_cohorts',
+        'toggle_visibility'
+    )
+    
+    def __init__(self, widget):
+        self.widget = widget
+        self.paired_wrapper = None
+        self._is_hidden = False
+        try:
+            self.is_hidden = not widget.visible
+        except AttributeError:
+            pass
+            
+    def __setattr__(self, name, value):
+        if name in self._UNDELEGATED_ATTRIBUTES:
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self.widget, name, value)
+            
+    def __getattr__(self, name):
+        return getattr(self.widget, name)
+        
+    def sync_cohorts(self, visibility_only=False):
+        if self.widget.cohorts:
+            for cohort in self.widget.cohorts:
+                cohort.is_hidden = self._is_hidden
+                if not visibility_only:
+                    self.widget.sync_cohorts()
+                    
+    def set_paired_widget(self, paired):
+        if isinstance(paired, self.__class__):
+            self.paired_wrapper = paired
+            self.paired_wrapper.paired_wrapper = self
+            paired = paired.widget
+        self.widget.set_paired_widget(paired)
+    
+    def set_visible(self):
+        if self._is_hidden:
+            self.toggle_visibility()
+            
+    def toggle_visibility(self):
+        if not self.paired_wrapper:
+            raise SetupIncompleteError('Cannot toggle visibility on an unpaired widget.')
+        old = self._is_hidden
+        self.is_hidden = not old
+        self.sync_cohorts(True)
+        self.paired_wrapper.is_hidden = not self._is_hidden
+        self.paired_wrapper.sync_cohorts(True)
+        
+    @property
+    def is_hidden(self):
+        return self._is_hidden or self.widget.is_hidden
+        
+    @is_hidden.setter
+    def is_hidden(self, is_hidden):
+        self._is_hidden = is_hidden
         
 class ToggledWidgetModelFormMetaclass(ModelFormMetaclass):
     """
@@ -122,20 +191,16 @@ class ToggledWidgetFormMixin(six.with_metaclass(ToggledWidgetModelFormMetaclass)
         self.cohort_fields_index = {}
         for master, paired in self.resolved_toggle_pairs:
             metafield_name = self.build_metafield_name(master[0])
-            master_widget = self.fields[master[0]].widget
-            paired_widget = self.fields[paired[0]].widget
+            self.fields[master[0]].widget = master_widget = ToggledWidgetWrapper(
+                self.fields[master[0]].widget
+            )
             master_widget.set_metafield_name(metafield_name)
-            cohorts = []
-            for field in master[1]:
-                self.cohort_fields_index[field] = master[0]
-                cohorts.append(self.fields[field].widget)
-            master_widget.set_cohorts(cohorts)
-            master_widget.set_paired_widget(paired_widget)
-            cohorts = []
-            for field in paired[1]:
-                self.cohort_fields_index[field] = paired[0]
-                cohorts.append(self.fields[field].widget)
-            paired_widget.set_cohorts(cohorts)
+            self.fields[paired[0]].widget = paired_widget = ToggledWidgetWrapper(
+                self.fields[paired[0]].widget
+            )
+            master_widget.set_paired_widget(self.fields[paired[0]].widget)
+            self._register_cohorts(master[0], master[1], master_widget)
+            self._register_cohorts(paired[0], paired[1], paired_widget)
             # As the initial value of the metafield, we'll use the master
             # field name, unless the instance attribute corresponding with the
             # paired field name has a value.
@@ -182,6 +247,16 @@ class ToggledWidgetFormMixin(six.with_metaclass(ToggledWidgetModelFormMetaclass)
             )
         return resolved
         
+    def _register_cohorts(self, field_name, cohort_names, widget):
+        cohorts = []
+        for cohort in cohort_names:
+            self.cohort_fields_index[cohort] = field_name
+            self.fields[cohort].widget = ToggledWidgetWrapper(
+                self.fields[cohort].widget
+            )
+            cohorts.append(self.fields[cohort].widget)
+        widget.set_cohorts(cohorts)
+        
     def add_error(self, field, error):
         super(ToggledWidgetFormMixin, self).add_error(field, error)
         # If this error is on a field involved in a toggle relationship, make
@@ -197,10 +272,10 @@ class ToggledWidgetFormMixin(six.with_metaclass(ToggledWidgetModelFormMetaclass)
             try:
                 field_instance = self.fields[self.cohort_fields_index[field]]
             except KeyError:
-                if not isinstance(self.fields[field].widget, ToggledWidget):
+                if not isinstance(self.fields[field].widget, ToggledWidgetWrapper):
                     return
                 field_instance = self.fields[field]
-            if not field_instance.widget.visible:
+            if field_instance.widget.is_hidden:
                 field_instance.widget.toggle_visibility()
         
     def clean(self, *args, **kwargs):
