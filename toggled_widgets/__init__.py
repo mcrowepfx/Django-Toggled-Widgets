@@ -16,7 +16,12 @@ class ToggledWidget(Widget):
     toggle_button_text = 'Toggle'
     
     class Media:
-        js = ('admin/js/DjangoAdminFieldContext.js', 'admin/js/toggledWidgets.js')
+        js = (
+            'admin/js/vendor/jquery/jquery.js',
+            'admin/js/jquery.init.js',
+            'admin/js/DjangoAdminFieldContext.js',
+            'admin/js/toggledWidgets.js'
+        )
         
     def __init__(self, *args, **kwargs):
         super(ToggledWidget, self).__init__(*args, **kwargs)
