@@ -6,7 +6,7 @@ with open(os.path.join(os.path.dirname(__file__), 'README.rst')) as readme:
     
 setup(
     name='django-toggled-widgets',
-    version='0.1',
+    version='0.2',
     packages=find_packages(),
     include_package_data=True,
     description='Base classes and mixins to facilitate toggling visibility between multiple Django admin fields',

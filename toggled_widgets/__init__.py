@@ -17,7 +17,6 @@ class ToggledWidget(Widget):
     
     class Media:
         js = (
-            'admin/js/vendor/jquery/jquery.js',
             'admin/js/jquery.init.js',
             'admin/js/DjangoAdminFieldContext.js',
             'admin/js/toggledWidgets.js'
