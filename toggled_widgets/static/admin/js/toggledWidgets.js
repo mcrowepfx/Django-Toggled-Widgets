@@ -96,13 +96,13 @@
     django.jQuery(function() {
         /* Don't prepare the fields in the invisible extra form that's there
         only to be cloned. */
-        django.jQuery('[data-toggle-id]:not([name*="__prefix__"])').each(function() {
+        django.jQuery('.toggledWidget:not([name*="__prefix__"])').each(function() {
             prepareToggle(this);
         });
         /* Instead, listen for dynamic additions and prepare those fields when
         they are added. */
         django.jQuery(document).on('formset:added', function(event, $row, formsetName) {
-            $row.find('[data-toggle-id]').each(function() {
+            $row.find('.toggledWidget').each(function() {
                 prepareToggle(this);
             });
         });

@@ -92,6 +92,12 @@ class ToggledWidget(Widget):
                 'data-toggle-pairing': self.paired_widget.pairing_id,
                 'data-toggle-button-text': self.toggle_button_text
             })
+            try:
+                classes = attrs['class'].split(' ')
+            except KeyError:
+                classes = []
+            classes.append('toggledWidget')
+            attrs['class'] = ' '.join(classes)
         return attrs
         
 class ToggledWidgetWrapper(object):
