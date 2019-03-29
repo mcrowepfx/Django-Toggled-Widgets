@@ -1,3 +1,65 @@
+class ToggledWidget {
+    constructor(jQuery, element) {
+        this.jQuery = jQuery;
+        this.element = element;
+        this.fieldName = this.element.getAttribute('name');
+        this.element.toggler = this;
+        let context = new DjangoAdminFieldContext(this.element);
+        this.row = context.row;
+        let toggleId = this.element.getAttribute('data-toggle-id');
+        let $fieldset = this.jQuery(context.fieldset);
+        /* We don't actually care about the cohort fields, just the rows in
+        which they appear. */
+        let cohortRows = [];
+        $fieldset.find(
+            '[data-master-toggle-id="]' + toggleId + '"]'
+        ).each(function() {
+            let context = new DjangoAdminFieldContext(this);
+            cohortRows.push(context.row);
+        });
+        this.cohortRows = cohortRows;
+        this.others = this.jQuery(context.fieldset).find(
+            '[data-toggle-id]:not([data-toggle-id="' + toggleId + '"])'
+        ).get();
+        /* Find the metafield. This works a bit differently in the context of
+        an inline form versus a regular form. */
+        let fieldsetContainerId = context.fieldset.parentElement.id;
+        let metafieldName = this.element.getAttribute('data-metafield-name');
+        /* If the parent of the fieldset has an id attribute, and it ends with
+        a hyphen followed by a number, we're in an inline context. We'll need
+        to chop the contents of that id off the field's name attribute to get
+        the clean name, which is what the metafield expects to get as a value.
+        */
+        if (fieldsetContainerId && /-\d+$/.test(fieldsetContainerId)) {
+            this.fieldName = this.fieldName.substr(fieldsetContainerId.length + 1);
+        }
+        this.metafield = $fieldset.find(
+            'input[data-base-name="' + metafieldName + '"]'
+        ).get(0);
+    }
+    
+    get isVisible() {
+        this.row.getAttribute('class').indexOf('hidden') == -1;
+    }
+    
+    show() {
+        this.jQuery(this.row).removeClass('hidden');
+        for (let i = 0; i < this.cohortRows.length; i++) {
+            this.jQuery(this.cohortRows[i]).removeClass('hidden');
+        }
+        for (let i = 0; i < this.others.length; i++) {
+            this.others[i].toggler.hide();
+        }
+    }
+    
+    hide() {
+        this.jQuery(this.row).addClass('hidden');
+        for (let i = 0; i < this.cohortRows.length; i++) {
+            this.jQuery(this.cohortRows[i]).addClass('hidden');
+        }
+    }
+}
+
 (function() {
     function prepareToggle(field) {
         if (field.paired !== undefined) {
@@ -67,15 +129,6 @@
                 this.paired.toggle();
             }
         }.bind(field);
-        /* The help text happens to have a class on it that forces the button
-        to be aligned the way I want. If this field doesn't have help text,
-        we'll want to insert an element to fill the same role. */
-        var row = django.jQuery(field.context.row);
-        if (!row.find('div.help').length) {
-            var clearDiv = document.createElement('div');
-            clearDiv.setAttribute('style', 'clear: left');
-            row.append(clearDiv);
-        }
         var button = document.createElement('button');
         button.field = field;
         django.jQuery(button).attr({
@@ -86,7 +139,7 @@
         ).on('click', function() {
             this.field.toggle(true);
         });
-        row.append(button);
+        field.context.row.appendChild(button);
         // If the pairing on the other end is complete, trigger an event
         if (field.paired.paired) {
             django.jQuery(document).trigger('pairingReady', [field]);
