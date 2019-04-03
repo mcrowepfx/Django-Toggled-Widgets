@@ -155,6 +155,7 @@ class ToggledWidgetWrapper(ToggledWidgetCohortWrapper):
             for widget in self.widget_group:
                 if widget is not self:
                     widget.is_hidden = True
+            self.metafield.initial = self.field_name
         
 class ToggledWidgetModelFormMetaclass(ModelFormMetaclass):
     """
