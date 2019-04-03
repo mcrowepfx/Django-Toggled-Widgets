@@ -1,0 +1,19 @@
+.toggle-button {
+    background: #79aec8;
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    text-align-last: center;
+    appearance: none;
+    -moz-appearance: none;
+    -webkit-appearance: none;
+}
+
+.toggle-button::-ms-expand {
+    display: none;
+}
+
+.toggle-button:hover {
+    background: #609ab6;
+}
