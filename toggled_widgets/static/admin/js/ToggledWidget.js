@@ -53,14 +53,19 @@ class ToggledWidget {
 }
 
 function initializeMetafield(field) {
-    let toggledWidgets = {};
-    django.jQuery(
-        '[data-toggle-group-id=' + field.getAttribute('data-toggle-group-id') + '].toggled-widget'
+    let optionsByValue = {};
+    for (let i = 0; i < field.options.length; i++) {
+        optionsByValue[field.options[i].value] = field.options[i];
+    }
+    // Make sure this stays within the context of the fieldset
+    let context = new DjangoAdminFieldContext(field);
+    django.jQuery(context.fieldset).find(
+        '[data-toggle-group-id=' + field.getAttribute('data-toggle-group-id') + '].toggled-widget:not(.toggle-metafield)'
     ).each(function() {
-        toggledWidgets[this.toggler.fieldName] = this.toggler;
+        optionsByValue[this.toggler.fieldName].toggler = this.toggler;
     });
     django.jQuery(field).on('change', function() {
-        toggledWidgets[this.options[this.options.selectedIndex].value].show();
+        this.options[this.selectedIndex].toggler.show();
     });
     if (field.getAttribute('class').indexOf('toggle-button') > -1) {
         django.jQuery(field).on('mousedown', function(e) {
@@ -68,7 +73,7 @@ function initializeMetafield(field) {
                 e.preventDefault();
                 /* The only two possible values for the selected index should be 0
                 and 1. */
-                this.options.selectedIndex = this.options.selectedIndex ? 0 : 1;
+                this.selectedIndex = this.selectedIndex ? 0 : 1;
                 django.jQuery(this).change();
             }
         });

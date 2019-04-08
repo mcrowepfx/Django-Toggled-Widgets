@@ -120,7 +120,10 @@ class ToggledWidgetWrapper(ToggledWidgetCohortWrapper):
         'widget_group',
         'cohorts',
         'metafield',
-        'lock'
+        'lock',
+        # These are aliases for backward compatibility, subject to future removal
+        'set_visible',
+        'break_pairing'
     )
     
     def __init__(self, widget, field_name, group, cohorts, metafield):
@@ -156,6 +159,13 @@ class ToggledWidgetWrapper(ToggledWidgetCohortWrapper):
                 if widget is not self:
                     widget.is_hidden = True
             self.metafield.initial = self.field_name
+            
+    # Aliases for backward compatibility
+    def set_visible(self):
+        self.is_hidden = False
+        
+    def break_pairing(self):
+        self.lock()
         
 class ToggledWidgetModelFormMetaclass(ModelFormMetaclass):
     """
@@ -254,6 +264,8 @@ class ToggledWidgetFormMixin(six.with_metaclass(ToggledWidgetModelFormMetaclass)
         super(ToggledWidgetFormMixin, self).__init__(*args, **kwargs)
         self._group_index = {}
         self._cohort_fields_index = {}
+        if self.toggle_groups is None:
+            raise SetupIncompleteError('This class must define the toggle_groups attribute.')
         for group in self.toggle_groups:
             metafield_name = self._metafields[tuple(member[0] for member in group)]
             metafield = self.fields[metafield_name]
@@ -433,6 +445,7 @@ class ToggledWidgetAdminMixin(object):
         except AttributeError:
             raise SetupIncompleteError(
                 'The metafields do not appear to have been set on {}. '
-                'Does it inherit from ToggledWidgetFormMixin?'.format(self.form.__name__)
+                'Does it inherit from ToggledWidgetFormMixin, and does it '
+                'define the toggle_groups attribute?'.format(self.form.__name__)
             )
         return fieldsets
