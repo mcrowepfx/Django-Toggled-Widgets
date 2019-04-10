@@ -1,4 +1,5 @@
 from copy import deepcopy
+from itertools import chain
 from warnings import warn
 from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
 from django.core.exceptions import ImproperlyConfigured
@@ -144,8 +145,8 @@ class ToggledWidgetWrapper(ToggledWidgetCohortWrapper):
         any further toggling from taking place either on the server or the
         client side.
         """
-        self.is_hidden = False
-        self.metafield.initial = self.field_name
+        if self.is_hidden:
+            self.is_hidden = False
         self.widget_group = ()
         # Do this to prevent the metafield from showing up
         self.metafield.widget = HiddenInput()
@@ -190,7 +191,10 @@ class ToggledWidgetModelFormMetaclass(ModelFormMetaclass):
                 attrs['toggle_groups'].append(
                     [ToggledWidgetModelFormMetaclass.split_group_member(m) for m in group]
                 )
-            attrs['_metafields'] = {}
+            # This index associates each field name involved in a toggle
+            # relationship (including cohorts) with the name of the
+            # corresponding metafield.
+            attrs['_metafield_index'] = {}
             metafield_widgets = attrs.get('metafield_widgets', {})
             for group in attrs['toggle_groups']:
                 field_names = tuple(member[0] for member in group)
@@ -218,7 +222,8 @@ class ToggledWidgetModelFormMetaclass(ModelFormMetaclass):
                 attrs[metafield_name] = Metafield(
                     widget=metafield_widget(attrs={'class': 'toggle-metafield'})
                 )
-                attrs['_metafields'][field_names] = metafield_name
+                for field_name in chain.from_iterable(group):
+                    attrs['_metafield_index'][field_name] = metafield_name
         return super(ToggledWidgetModelFormMetaclass, cls).__new__(cls, name, bases, attrs)
         
     @staticmethod
@@ -267,7 +272,7 @@ class ToggledWidgetFormMixin(six.with_metaclass(ToggledWidgetModelFormMetaclass)
         if self.toggle_groups is None:
             raise SetupIncompleteError('This class must define the toggle_groups attribute.')
         for group in self.toggle_groups:
-            metafield_name = self._metafields[tuple(member[0] for member in group)]
+            metafield_name = self._metafield_index[group[0][0]]
             metafield = self.fields[metafield_name]
             # This ID will make it possible for each metafield to identify the
             # fields it toggles.
@@ -294,6 +299,7 @@ class ToggledWidgetFormMixin(six.with_metaclass(ToggledWidgetModelFormMetaclass)
                     )
                     self.fields[cohort].widget.attrs['data-master-toggle-id'] = toggle_id
                     cohort_widgets.append(self.fields[cohort].widget)
+                    self._cohort_fields_index[cohort] = field_name
                 field.widget = ToggledWidgetWrapper(
                     field.widget, field_name, widget_group, cohort_widgets, metafield
                 )
@@ -312,10 +318,12 @@ class ToggledWidgetFormMixin(six.with_metaclass(ToggledWidgetModelFormMetaclass)
                 metafield.choices.append((
                     field_name, metafield_label or field.label or pretty_name(field_name)
                 ))
-            if not initial_field:
-                initial_field = group[0][0]
-            metafield.initial = initial_field
-            self.fields[initial_field].widget.is_hidden = False
+            # Skip this for bound forms; the field value will come from the
+            # form data, so set it during cleaning.
+            if not self.is_bound:
+                if not initial_field:
+                    initial_field = group[0][0]
+                self.fields[initial_field].widget.is_hidden = False
         
     @staticmethod
     def build_metafield_name(field_name):
@@ -340,20 +348,20 @@ class ToggledWidgetFormMixin(six.with_metaclass(ToggledWidgetModelFormMetaclass)
             try:
                 field_instance = self.fields[self._cohort_fields_index[field]]
             except KeyError:
-                if not isinstance(self.fields[field].widget, ToggledWidgetWrapper):
-                    return
                 field_instance = self.fields[field]
+                if not isinstance(field_instance.widget, ToggledWidgetWrapper):
+                    continue
             field_instance.widget.is_hidden = False
         
     def clean(self, *args, **kwargs):
         cleaned_data = super(ToggledWidgetFormMixin, self).clean(*args, **kwargs)
         # Unset the values of any currently inactive fields
         for group in self.toggle_groups:
-            metafield_value = cleaned_data[
-                self._metafields[tuple(member[0] for member in group)]
-            ]
+            metafield_value = cleaned_data[self._metafield_index[group[0][0]]]
             for field_name, cohorts in group:
-                if field_name != metafield_value:
+                if field_name == metafield_value:
+                    self.fields[field_name].widget.is_hidden = False
+                else:
                     cleaned_data[field_name] = self.fields[field_name].to_python('')
                     for cohort in cohorts:
                         cleaned_data[cohort] = self.fields[cohort].to_python('')
@@ -403,7 +411,9 @@ class ToggledWidgetAdminMixin(object):
         ))
         form = self._get_form_for_get_fields(request, obj)
         try:
-            for field_names, metafield in form._metafields.items():
+            for group in form.toggle_groups:
+                field_names = [member[0] for member in group]
+                metafield = form._metafield_index[field_names[0]]
                 # If the metafield is already there, remove it so we can
                 # insert it at the proper position.
                 try:
@@ -430,7 +440,9 @@ class ToggledWidgetAdminMixin(object):
                 fields.add(field_name)
         form = self._get_form_for_get_fields(request, obj)
         try:
-            for field_names, metafield in form._metafields.items():
+            for group in form.toggle_groups:
+                field_names = [member[0] for member in group]
+                metafield = form._metafield_index[field_names[0]]
                 if metafield not in fields:
                     try:
                         fieldset = fieldset_index[field_names[0]]
