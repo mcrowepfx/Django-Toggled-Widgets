@@ -1,3 +1,4 @@
+import sys
 from copy import deepcopy
 from itertools import chain
 from warnings import warn
@@ -8,10 +9,10 @@ from django.forms.boundfield import BoundField
 from django.forms.models import ModelFormMetaclass
 from django.forms.utils import pretty_name
 from django.forms.widgets import Media, Widget, ChoiceWidget, Select, HiddenInput
-    
+
 class SetupIncompleteError(ImproperlyConfigured):
     pass
-    
+
 class MetafieldWidget(Select):
     """
     Widget that renders itself as a toggling button if there are only two
@@ -20,11 +21,11 @@ class MetafieldWidget(Select):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.option_count = 0
-        
+
     def create_option(self, *args, **kwargs):
         self.option_count += 1
         return super().create_option(*args, **kwargs)
-        
+
     def get_context(self, *args, **kwargs):
         context = super().get_context(*args, **kwargs)
         if self.option_count == 2:
@@ -34,31 +35,31 @@ class MetafieldWidget(Select):
             except KeyError:
                 attrs['class'] = 'toggle-button'
         return context
-        
+
 class LabellessBoundField(BoundField):
     def label_tag(self, *args, **kwargs):
         return ''
-        
+
 class Metafield(ChoiceField):
     def get_bound_field(self, form, field_name):
         return LabellessBoundField(form, self, field_name)
 
 class ToggledWidget(Widget):
     toggle_button_text = None
-    
+
     def __init__(self, *args, **kwargs):
         warn(
             'This class is deprecated and is no longer required.',
             DeprecationWarning
         )
         super().__init__(*args, **kwargs)
-        
+
     def get_metafield_label(self):
         return self.toggle_button_text or ''
-        
+
 class ToggledWidgetMixin:
     metafield_label = None
-    
+
     def get_metafield_label(self):
         """
         This method should return the text label that should be visible within
@@ -70,7 +71,7 @@ class ToggledWidgetMixin:
         counterintuitive.
         """
         return self.metafield_label
-        
+
 class ToggledWidgetCohortWrapper:
     """
     Wrapper class for cohorts of widgets that control a toggling relationship.
@@ -82,35 +83,35 @@ class ToggledWidgetCohortWrapper:
         '_set_visibility',
         'attrs'
     )
-    
+
     def __init__(self, widget):
         self.widget = widget
         self._is_hidden = False
         # Widgets for choice fields in the admin are wrapped in a container,
         # which means that in order to set HTML attributes on them, you have
-        # to drill down
+        # to drill down.
         self.attrs = widget.widget.attrs if isinstance(widget, RelatedFieldWidgetWrapper) else widget.attrs
-            
+
     def __setattr__(self, name, value):
         if name in self._UNDELEGATED_ATTRIBUTES:
             object.__setattr__(self, name, value)
         else:
             setattr(self.widget, name, value)
-            
+
     def __getattr__(self, name):
         return getattr(self.widget, name)
-        
+
     def _set_visibility(self, is_hidden):
         self._is_hidden = is_hidden
-        
+
     @property
     def is_hidden(self):
         return self._is_hidden or self.widget.is_hidden
-        
+
     @is_hidden.setter
     def is_hidden(self, is_hidden):
         self._set_visibility(is_hidden)
-                    
+
 class ToggledWidgetWrapper(ToggledWidgetCohortWrapper):
     """
     Wrapper class for widgets that control a toggling relationship.
@@ -125,7 +126,7 @@ class ToggledWidgetWrapper(ToggledWidgetCohortWrapper):
         'set_visible',
         'break_pairing'
     )
-    
+
     def __init__(self, widget, field_name, group, cohorts, metafield):
         super().__init__(widget)
         self.field_name = field_name
@@ -133,11 +134,11 @@ class ToggledWidgetWrapper(ToggledWidgetCohortWrapper):
         for cohort in cohorts:
             if not isinstance(cohort, ToggledWidgetCohortWrapper):
                 raise TypeError(
-                    'Cohort widgets must ToggledWidgetCohortWrapper instances.'
+                    'Cohort widgets must be ToggledWidgetCohortWrapper instances.'
                 )
         self.cohorts = cohorts
         self.metafield = metafield
-        
+
     def lock(self):
         """
         Locks this widget as the visible one within its group and prevents
@@ -149,7 +150,7 @@ class ToggledWidgetWrapper(ToggledWidgetCohortWrapper):
         self.widget_group = ()
         # Do this to prevent the metafield from showing up
         self.metafield.widget = HiddenInput()
-        
+
     def _set_visibility(self, is_hidden):
         super()._set_visibility(is_hidden)
         for cohort in self.cohorts:
@@ -159,14 +160,14 @@ class ToggledWidgetWrapper(ToggledWidgetCohortWrapper):
                 if widget is not self:
                     widget.is_hidden = True
             self.metafield.initial = self.field_name
-            
+
     # Aliases for backward compatibility
     def set_visible(self):
         self.is_hidden = False
-        
+
     def break_pairing(self):
         self.lock()
-        
+
 class ToggledWidgetModelFormMetaclass(ModelFormMetaclass):
     """
     Metaclass that adds class-level hidden metafield attributes for each
@@ -224,11 +225,11 @@ class ToggledWidgetModelFormMetaclass(ModelFormMetaclass):
                 for field_name in chain.from_iterable(group):
                     attrs['_metafield_index'][field_name] = metafield_name
         return super().__new__(cls, name, bases, attrs)
-        
+
     @staticmethod
     def get_metafield_name(field_name):
         return '{}_metafield'.format(field_name)
-        
+
     @staticmethod
     def split_group_member(member):
         """
@@ -246,7 +247,7 @@ class ToggledWidgetModelFormMetaclass(ModelFormMetaclass):
                 'Members of widget group must either be strings or sequences '
                 'objects containing multiple strings.'
             )
-        
+
 class ToggledWidgetFormMixin(metaclass=ToggledWidgetModelFormMetaclass):
     """
     Provides special handling for the initialization and submission of forms
@@ -263,19 +264,21 @@ class ToggledWidgetFormMixin(metaclass=ToggledWidgetModelFormMetaclass):
     # inherit from django.forms.widgets.ChoiceWidget. The name of any field in
     # a toggle group may be used as the key.
     metafield_widgets = None
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.__modify_fields__(*args, **kwargs)
         self._group_index = {}
         self._cohort_fields_index = {}
         if self.toggle_groups is None:
             raise SetupIncompleteError('This class must define the toggle_groups attribute.')
-        for group in self.toggle_groups:
+        self._setup()
+
+    def _setup(self):
+        for group_id, group in enumerate(self.toggle_groups):
+            toggle_id_iterator = iter(range(len(self.toggle_groups), sys.maxsize))
             metafield_name = self._metafield_index[group[0][0]]
             metafield = self.fields[metafield_name]
-            # This ID will make it possible for each metafield to identify the
-            # fields it toggles.
-            group_id = id(metafield)
             metafield.widget.attrs['data-toggle-group-id'] = group_id
             metafield.choices = []
             self._group_index[metafield_name] = widget_group = []
@@ -290,7 +293,7 @@ class ToggledWidgetFormMixin(metaclass=ToggledWidgetModelFormMetaclass):
                 # Each widget gets an ID that's unique within the context of
                 # its fieldset, and each toggled widget group gets such an ID.
                 # Cohorts also get tied to the controlling widget via its ID.
-                toggle_id = id(field)
+                toggle_id = next(toggle_id_iterator)
                 cohort_widgets = []
                 for cohort in cohorts:
                     self.fields[cohort].widget = ToggledWidgetCohortWrapper(
@@ -323,7 +326,7 @@ class ToggledWidgetFormMixin(metaclass=ToggledWidgetModelFormMetaclass):
                 if not initial_field:
                     initial_field = group[0][0]
                 self.fields[initial_field].widget.is_hidden = False
-        
+
     @staticmethod
     def build_metafield_name(field_name):
         warn(
@@ -331,7 +334,18 @@ class ToggledWidgetFormMixin(metaclass=ToggledWidgetModelFormMetaclass):
             DeprecationWarning
         )
         return ToggledWidgetModelFormMetaclass.get_metafield_name(field_name)
-        
+
+    def __modify_fields__(self, *args, **kwargs):
+        """
+        This is a hook for subclasses to modify fields during initialization.
+        Subclasses should do so via this hook rather than in the constructor,
+        as the latter must perform setup on the widgets to wrap them
+        appropriately, and therefore the toggling won't work properly on any
+        fields modified after this class constructor finishes (though
+        subclasses are free to override the constructor to do other things).
+        The same arguments passed to the constructor are passed here.
+        """
+
     def add_error(self, field, error):
         super().add_error(field, error)
         # If this error is on a field involved in a toggle relationship, make
@@ -351,7 +365,7 @@ class ToggledWidgetFormMixin(metaclass=ToggledWidgetModelFormMetaclass):
                 if not isinstance(field_instance.widget, ToggledWidgetWrapper):
                     continue
             field_instance.widget.is_hidden = False
-        
+
     def clean(self, *args, **kwargs):
         cleaned_data = super().clean(*args, **kwargs)
         # Unset the values of any currently inactive fields
@@ -365,7 +379,7 @@ class ToggledWidgetFormMixin(metaclass=ToggledWidgetModelFormMetaclass):
                     for cohort in cohorts:
                         cleaned_data[cohort] = self.fields[cohort].to_python('')
         return cleaned_data
-        
+
     @property
     def media(self):
         return super().media + Media(js=(
@@ -374,7 +388,7 @@ class ToggledWidgetFormMixin(metaclass=ToggledWidgetModelFormMetaclass):
             'admin/js/ToggledWidget.js',
             'admin/js/ToggledWidget.init.js'
         ), css={'all': ('admin/css/ToggledWidget.css',)})
-        
+
 class ToggledWidgetAdminMixin:
     """
     ModelAdmin mixin that automatically adds all metafields to the fieldsets
@@ -403,7 +417,7 @@ class ToggledWidgetAdminMixin:
                     )
                 )
             field_list.insert(last_index + 1, metafield)
-                    
+
     def get_fields(self, request, obj=None):
         fields = list(deepcopy(super().get_fields(request, obj)))
         form = self._get_form_for_get_fields(request, obj)
@@ -424,7 +438,7 @@ class ToggledWidgetAdminMixin:
                 'The metafields do not appear to have been set on {}. '
                 'Does it inherit from ToggledWidgetFormMixin?'.format(form.__name__)
             )
-    
+
     def get_fieldsets(self, request, obj=None):
         fieldsets = list(deepcopy(super().get_fieldsets(request, obj)))
         fieldset_index = {}
