@@ -1,13 +1,13 @@
 class ToggledWidget {
-    constructor(jQuery, element) {
-        this.jQuery = jQuery;
+    constructor($, element) {
+        this.$ = $;
         this.element = element;
         this.element.toggler = this;
         this.fieldName = this.element.getAttribute('name');
         let context = new DjangoAdminFieldContext(this.element);
         this.row = context.row;
         let toggleId = this.element.getAttribute('data-toggle-id');
-        let $fieldset = this.jQuery(context.fieldset);
+        let $fieldset = this.$(context.fieldset);
         /* We don't actually care about the cohort fields, just the rows in
         which they appear. */
         let cohortRows = [];
@@ -23,7 +23,7 @@ class ToggledWidget {
             ':not([data-toggle-id="' + toggleId + '"])' +
             // And also not the metafield
             ':not(.toggle-metafield)';
-        this.others = this.jQuery(context.fieldset).find(selector).get();
+        this.others = this.$(context.fieldset).find(selector).get();
         let fieldsetContainerId = context.fieldset.parentElement.id;
         /* If the parent of the fieldset has an id attribute, and it ends with
         a hyphen followed by a number, we're in an inline context. We'll need
@@ -33,21 +33,21 @@ class ToggledWidget {
             this.fieldName = this.fieldName.substr(fieldsetContainerId.length + 1);
         }
     }
-    
+
     show() {
-        this.jQuery(this.row).removeClass('hidden');
+        this.$(this.row).removeClass('hidden');
         for (let i = 0; i < this.cohortRows.length; i++) {
-            this.jQuery(this.cohortRows[i]).removeClass('hidden');
+            this.$(this.cohortRows[i]).removeClass('hidden');
         }
         for (let i = 0; i < this.others.length; i++) {
             this.others[i].toggler.hide();
         }
     }
-    
+
     hide() {
-        this.jQuery(this.row).addClass('hidden');
+        this.$(this.row).addClass('hidden');
         for (let i = 0; i < this.cohortRows.length; i++) {
-            this.jQuery(this.cohortRows[i]).addClass('hidden');
+            this.$(this.cohortRows[i]).addClass('hidden');
         }
     }
 }

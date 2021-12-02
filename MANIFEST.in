@@ -1,2 +1,2 @@
-include README.rst
-recursive-include toggled_widgets/static *
+include README.md
+recursive-include src/toggled_widgets/static *
