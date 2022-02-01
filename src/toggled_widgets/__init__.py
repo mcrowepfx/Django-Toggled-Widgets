@@ -361,8 +361,8 @@ class ToggledWidgetFormMixin(metaclass=ToggledWidgetModelFormMetaclass):
             try:
                 field_instance = self.fields[self._cohort_fields_index[field]]
             except KeyError:
-                field_instance = self.fields[field]
-                if not isinstance(field_instance.widget, ToggledWidgetWrapper):
+                field_instance = self.fields.get(field)
+                if not field_instance or not isinstance(field_instance.widget, ToggledWidgetWrapper):
                     continue
             field_instance.widget.is_hidden = False
 
