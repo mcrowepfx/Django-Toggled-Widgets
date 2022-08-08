@@ -7,6 +7,9 @@
             initializeMetafield(this);
         });
         $(document).on('formset:added', function(e, $row) {
+            if (!$row) {
+                $row = $(e.target);
+            }
             $row.find('.toggled-widget').each(function() {
                 new ToggledWidget($, this);
             });
